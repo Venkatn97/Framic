@@ -110,20 +110,21 @@ async def analyze(
 
     low_confidence = ai_analysis.confidence_score < CONFIDENCE_DISCLAIMER_THRESHOLD
 
-    # Log to Supabase
+    # Log to Supabase (optional — works without it)
+    record_id = image_hash
     try:
         db = get_supabase()
-        row = {
-            "image_hash": image_hash,
-            "exif_data": exif_data,
-            "ai_analysis": ai_analysis.model_dump(),
-            "settings_output": settings_output,
-        }
-        result = db.table("analyses").insert(row).execute()
-        record_id = result.data[0]["id"]
+        if db is not None:
+            row = {
+                "image_hash": image_hash,
+                "exif_data": exif_data,
+                "ai_analysis": ai_analysis.model_dump(),
+                "settings_output": settings_output,
+            }
+            result = db.table("analyses").insert(row).execute()
+            record_id = result.data[0]["id"]
     except Exception:
-        # If Supabase is unavailable, use hash as fallback ID
-        record_id = image_hash
+        pass
 
     return AnalysisResponse(
         id=str(record_id),
@@ -139,8 +140,12 @@ async def analyze(
 @router.post("/feedback", response_model=FeedbackResponse)
 async def feedback(body: FeedbackRequest):
     """Record user feedback for a given analysis."""
+    db = get_supabase()
+    if db is None:
+        # Supabase not configured — accept feedback silently
+        return FeedbackResponse(id="local", message="Feedback noted (database not configured)")
+
     try:
-        db = get_supabase()
         row = {
             "analysis_id": body.analysis_id,
             "worked": body.worked,
